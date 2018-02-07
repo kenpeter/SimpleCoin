@@ -1,20 +1,40 @@
+# Time running
 import time
+# Long string
 import hashlib as hasher
+# Data
 import json
+# Get, post, ...
 import requests
-import base64
-from flask import Flask
-from flask import request
-from multiprocessing import Process, Pipe
-import ecdsa
 
+# base 64
+import base64
+# Web framework
+from flask import Flask
+# Http request
+from flask import request
+# Running and |
+from multiprocessing import Process, Pipe
+
+# Crypto algorithm
+# ecd sa
+import ecdsa
+# Miner address, miner dot url, peer point
 from miner_config import MINER_ADDRESS, MINER_NODE_URL, PEER_NODES
 
+# Web framework instance
 node = Flask(__name__)
 
-
+# Block class
 class Block:
+    # Start
+    # Self, block index, when block created
+    # Block data
+    # Prev block hash
+    # Own hash
     def __init__(self, index, timestamp, data, previous_hash):
+        # Return a new block object
+        # Chained by prev hash
         """Return a new Block object. Each block is "chained" to its previous
         by calling its unique hash.
 
@@ -32,15 +52,22 @@ class Block:
             hash(str): Current block unique hash.
 
         """
+
+        # block id
         self.index = index
+        # When block created
         self.timestamp = timestamp
+        # Data in block
         self.data = data
+        # Prev block
         self.previous_hash = previous_hash
+        # It is block hash
         self.hash = self.hash_block()
   
     def hash_block(self):
         """Creates the unique hash for the block. It uses sha256."""
         sha = hasher.sha256()
+        # 
         sha.update((str(self.index) + str(self.timestamp) + str(self.data) + str(self.previous_hash)).encode('utf-8'))
         return sha.hexdigest()
 
@@ -48,15 +75,24 @@ def create_genesis_block():
     """To create each block, it needs the hash of the previous one. First
     block has no previous, so it must be created manually (with index zero
      and arbitrary previous hash)"""
+
+    # block index: 0
+    # created time: now
+    # data is json
+    # proof of work: 9
+    # trans: none
+    # hash zero
     return Block(0, time.time(), 
         {"proof-of-work": 9,"transactions": None},
          "0")
 
 
+# Insert first block to list
 # Node's blockchain copy
 BLOCKCHAIN = []
 BLOCKCHAIN.append(create_genesis_block())
 
+# Node has transation
 """ Store the transactions that this node has, in a list
 If the node you sent the transaction adds a block
 it will get accepted, but there is a chance it gets
@@ -66,26 +102,44 @@ NODE_PENDING_TRANSACTIONS = []
 
 
 def proof_of_work(last_proof,blockchain):
+  # keep adding 1
   # Create a variable that we will use to find our next proof of work
   incrementor = last_proof + 1
+
+  # Start time
   # Get start time
   start_time = time.time()
+
+  # loop body
+  # the num can divided by 7919
+  # and can divided by last proof
   # Keep incrementing the incrementor until it's equal to a number divisible by 9
   # and the proof of work of the previous block in the chain
   while not (incrementor % 7919 == 0 and incrementor % last_proof == 0):
+    # increment 1
     incrementor += 1
+
+    # start time
     start_time = time.time()
+
+    # We check every 60s
     # Check if any node found the solution every 60 seconds
     if (int((time.time()-start_time)%60)==0):
+        # Other ppl got it stop
         # If any other node got the proof, stop searching
         new_blockchain = consensus(blockchain)
         if new_blockchain != False:
             #(False:another node got proof first, new blockchain)
             return (False,new_blockchain)
+
+  # block chain is list
   # Once that number is found, we can return it as a proof of our work
   return (incrementor,blockchain)
 
 
+# what is a
+# list
+# transactions to a node
 def mine(a,blockchain,node_pending_transactions):
     BLOCKCHAIN = blockchain
     NODE_PENDING_TRANSACTIONS = node_pending_transactions
@@ -94,35 +148,57 @@ def mine(a,blockchain,node_pending_transactions):
         In order to prevent to many coins to be created, the process
         is slowed down by a proof of work algorithm.
         """
+
+        # Get last block
         # Get the last proof of work
         last_block = BLOCKCHAIN[len(BLOCKCHAIN) - 1]
+
+        # Get last proof of work
+        # proof of work is number
         last_proof = last_block.data['proof-of-work']
+
+        # Is incrementor same as proof of work.....?
         # Find the proof of work for the current block being mined
         # Note: The program will hang here until a new proof of work is found
         proof = proof_of_work(last_proof, BLOCKCHAIN)
+
         # If we didn't guess the proof, start mining again
         if proof[0] == False:
             # Update blockchain and save it to file
             BLOCKCHAIN = proof[1]
+
+            # a is append, append to file
             a.send(BLOCKCHAIN)
             continue
         else:
             # Once we find a valid proof of work, we know we can mine a block so 
             # we reward the miner by adding a transaction
             #First we load all pending transactions sent to the node server
+
+            # miner url
+            # miner address
+            # url access
+            # Get content
             NODE_PENDING_TRANSACTIONS = requests.get(MINER_NODE_URL + "/txion?update=" + MINER_ADDRESS).content
+            # load data from url
             NODE_PENDING_TRANSACTIONS = json.loads(NODE_PENDING_TRANSACTIONS)
+
+            # Append json
+            # from, to, amount
             #Then we add the mining reward
             NODE_PENDING_TRANSACTIONS.append(
             { "from": "network",
               "to": MINER_ADDRESS,
               "amount": 1 }
             )
+
+            # 
             # Now we can gather the data needed to create the new block
             new_block_data = {
             "proof-of-work": proof[0],
             "transactions": list(NODE_PENDING_TRANSACTIONS)
             }
+
             new_block_index = last_block.index + 1
             new_block_timestamp = time.time()
             last_block_hash = last_block.hash
@@ -131,6 +207,7 @@ def mine(a,blockchain,node_pending_transactions):
             # Now create the new block
             mined_block = Block(new_block_index, new_block_timestamp, new_block_data, last_block_hash)
             BLOCKCHAIN.append(mined_block)
+
             # Let the client know this node mined a block
             print(json.dumps({
               "index": new_block_index,
@@ -138,7 +215,9 @@ def mine(a,blockchain,node_pending_transactions):
               "data": new_block_data,
               "hash": last_block_hash
             }) + "\n")
+
             a.send(BLOCKCHAIN)
+            
             requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
 
 
@@ -158,6 +237,7 @@ def find_new_chains():
     return other_chains
 
 def consensus(blockchain):
+    # 
     # Get the blocks from other nodes
     other_chains = find_new_chains()
     # If our chain isn't longest, then we store the longest chain
@@ -253,6 +333,7 @@ def validate_signature(public_key,signature,message):
         return False
 
 
+# Welcome msg
 def welcome_msg():
     print("""       =========================================\n
         SIMPLE COIN v1.0.0 - BLOCKCHAIN SYSTEM\n
@@ -263,11 +344,19 @@ def welcome_msg():
 
 
 if __name__ == '__main__':
+    # Welcome
     welcome_msg()
+
+    # mine and server, 2 process
     #Start mining
     a,b=Pipe()
+
+
+    # mine(xxxxxx)
     p1 = Process(target = mine, args=(a,BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
     p1.start()
+
+    # server node run (process)
     #Start server to recieve transactions
     p2 = Process(target = node.run(), args=b)
     p2.start()
